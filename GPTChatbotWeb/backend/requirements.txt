@@ -1,4 +1,0 @@
-cd GPTChatbotWeb
-git add backend/requirements.txt
-git commit -m "✅ Add requirements.txt"
-git push
