@@ -1,40 +1,71 @@
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import openai
 import os
-from flask import Flask, request, jsonify
-from dotenv import load_dotenv
+import PyPDF2
 
-load_dotenv()
+# ✅ API 키 및 비밀번호는 환경변수로부터
+openai.api_key = os.getenv("OPENAI_API_KEY")
+PASSWORD = os.getenv("CHATBOT_PASSWORD", "12345678")
 
-app = Flask(__name__)
+app = FastAPI()
 
-# 환경변수에서 비밀번호 불러오기, 기본값 12345678
-CHATBOT_PASSWORD = os.getenv("CHATBOT_PASSWORD", "12345678")
+# ✅ CORS 허용 (프론트와 연결)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# GPT 옵션 기본값
-DEFAULT_TEMPERATURE = 0.7
-DEFAULT_MAX_TOKENS = 1024
+# ✅ 프론트엔드 정적 파일 제공
+app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
 
-def preprocess_pdf_text(text: str) -> str:
-    # PDF 텍스트 전처리 - 불필요한 공백 제거
-    return text.strip()
+# ✅ 채팅 처리 API
+@app.post("/chat")
+async def chat(request: Request):
+    data = await request.json()
 
-@app.route('/chat', methods=['POST'])
-def chat():
-    data = request.json
-    password = data.get('password')
-    user_input = data.get('message')
-    temperature = data.get('temperature', DEFAULT_TEMPERATURE)
-    max_tokens = data.get('max_tokens', DEFAULT_MAX_TOKENS)
+    # 🔐 비밀번호 확인
+    if data.get("password") != PASSWORD:
+        raise HTTPException(status_code=403, detail="Incorrect password")
 
-    # 비밀번호 확인
-    if password != CHATBOT_PASSWORD:
-        return jsonify({"error": "Invalid password"}), 401
+    message = data.get("message", "")
+    history = data.get("history", [])
+    model = data.get("model", "gpt-4")
+    temperature = float(data.get("temperature", 0.7))
+    max_tokens = int(data.get("max_tokens", 1024))
 
-    # GPT 호출 예시 (여기선 예시로 간단히 반환)
-    # 실제로는 OpenAI API 호출 코드 삽입
-    response_text = f"Received your message: {user_input}\nOptions - temp: {temperature}, max_tokens: {max_tokens}"
+    messages = history + [{"role": "user", "content": message}]
 
-    return jsonify({"response": response_text})
+    try:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        reply = response.choices[0].message.content
+        messages.append({"role": "assistant", "content": reply})
+        return {"reply": reply, "history": messages}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == '__main__':
-    app.run(debug=True)
- 
+# ✅ 파일 업로드 API (.pdf, .txt)
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
+    content = ""
+
+    if file.filename.endswith(".pdf"):
+        reader = PyPDF2.PdfReader(file.file)
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                content += text.strip() + "\n"
+    elif file.filename.endswith(".txt"):
+        content = (await file.read()).decode("utf-8").strip()
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file format")
+
+    return {"content": content[:3000]}  # 최대 3,000자만 미리보기로 반환
