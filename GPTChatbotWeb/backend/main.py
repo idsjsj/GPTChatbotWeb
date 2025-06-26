@@ -1,18 +1,13 @@
-# backend/main.py
-
-from fastapi import FastAPI, Request
+# ✅ backend/main.py - All-in-One GPT Chatbot Backend (with password, history, model choice)
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import openai
-import os
+import openai, os
 
-# OpenAI 키를 환경변수에서 읽어옵니다
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# FastAPI 앱 인스턴스 선언 → 이 줄이 반드시 있어야 합니다!
 app = FastAPI()
 
-# CORS 전체 허용 (전체 도메인에서 호출 가능)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,24 +15,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 정적 파일 서비스 (frontend/index.html)
+# Static frontend
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
 
-# POST /chat 엔드포인트
+# Config
+PASSWORD = "12345678"
+
 @app.post("/chat")
 async def chat(request: Request):
     data = await request.json()
+    if data.get("password") != PASSWORD:
+        raise HTTPException(status_code=403, detail="Incorrect password")
+
     message = data.get("message", "")
     history = data.get("history", [])
+    model = data.get("model", "gpt-4")
+
     messages = history + [{"role": "user", "content": message}]
-    # GPT 호출
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=messages
-    )
-    reply = response.choices[0].message.content
-    # 새 이력과 함께 응답 반환
-    return {
-        "reply": reply,
-        "history": messages + [{"role": "assistant", "content": reply}]
-    }
+
+    try:
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=messages
+        )
+        reply = response.choices[0].message.content
+        messages.append({"role": "assistant", "content": reply})
+        return {"reply": reply, "history": messages}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+ 
