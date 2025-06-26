@@ -1,15 +1,17 @@
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import openai, os, uuid, base64
+import openai, os, uuid
 import PyPDF2
+from PIL import Image
+import base64
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 PASSWORD = os.getenv("CHATBOT_PASSWORD", "12345678")
 
 app = FastAPI()
 
-# CORS
+# CORS 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,11 +19,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 프론트 정적 파일 제공
+# 정적 프론트엔드 파일 제공
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
 
-# 세션 메모리 저장소
-sessions = {}  # { session_id: { name, is_admin, history: [] } }
+# 세션 저장소 (메모리 기반)
+sessions = {}
 
 @app.post("/login")
 async def login(req: Request):
@@ -30,12 +32,8 @@ async def login(req: Request):
         raise HTTPException(status_code=403, detail="비밀번호가 틀렸습니다.")
     username = data.get("username", "anonymous")
     session_id = str(uuid.uuid4())
-    sessions[session_id] = {
-        "name": username,
-        "is_admin": username.lower() == "admin",
-        "history": []
-    }
-    return {"session_id": session_id, "is_admin": username.lower() == "admin"}
+    sessions[session_id] = {"name": username, "history": []}
+    return {"session_id": session_id}
 
 @app.post("/chat")
 async def chat(req: Request):
@@ -50,12 +48,10 @@ async def chat(req: Request):
         raise HTTPException(status_code=400, detail="세션이 존재하지 않습니다.")
 
     session = sessions[session_id]
-    history = session["history"]
-
     if message == "[REPEAT_LAST]":
-        history = history[:-1] if history else []
+        history = session["history"][:-1] if session["history"] else []
     else:
-        history.append({"role": "user", "content": message})
+        history = session["history"] + [{"role": "user", "content": message}]
 
     try:
         response = openai.ChatCompletion.create(
@@ -93,7 +89,7 @@ async def upload(file: UploadFile = File(...)):
     else:
         raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다.")
 
-    return {"content": content[:3000]}
+    return {"content": content[:3000]}  # 최대 3000자 미리보기
 
 @app.post("/voice")
 async def voice_to_text(file: UploadFile = File(...)):
@@ -123,17 +119,3 @@ async def image_to_text(file: UploadFile = File(...)):
         return {"description": response.choices[0].message.content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/admin")
-async def admin_view(session_id: str):
-    if session_id not in sessions or not sessions[session_id]["is_admin"]:
-        raise HTTPException(status_code=403, detail="관리자 권한이 없습니다.")
-    return {
-        "all_sessions": {
-            sid: {
-                "user": sess["name"],
-                "history": sess["history"]
-            }
-            for sid, sess in sessions.items()
-        }
-    }
