@@ -1,74 +1,100 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <title>GPT Chatbot</title>
-  <style>
-    body { font-family: Arial; padding: 2em; background: #f0f0f0; }
-    #chatbox { background: white; border: 1px solid #ccc; padding: 1em; height: 400px; overflow-y: scroll; }
-    input, select, button { margin-top: 0.5em; padding: 0.5em; width: 100%; box-sizing: border-box; }
-  </style>
-</head>
-<body>
-  <h2>🔐 GPT 챗봇 (비밀번호: 12345678)</h2>
-  <input id="password" type="password" placeholder="비밀번호 입력" />
-  <div id="chatUI" style="display:none;">
-    <div id="chatbox"></div>
-    <input id="userInput" placeholder="메시지를 입력하세요..." />
-    <select id="model">
-      <option value="gpt-4">GPT-4</option>
-      <option value="gpt-3.5-turbo">GPT-3.5</option>
-    </select>
-    <button onclick="sendMessage()">보내기</button>
-    <button onclick="saveChat()">💾 저장</button>
-  </div>
+import React, { useState } from "react";
 
-  <script>
-    let history = [];
+export default function Chatbot() {
+  const [password, setPassword] = useState("");
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [message, setMessage] = useState("");
+  const [chatLog, setChatLog] = useState([]);
+  const [temperature, setTemperature] = useState(0.7);
+  const [maxTokens, setMaxTokens] = useState(1024);
 
-    document.getElementById("password").addEventListener("keydown", function(e) {
-      if (e.key === "Enter") {
-        document.getElementById("chatUI").style.display = "block";
-        document.getElementById("password").style.display = "none";
-      }
+  async function handleLogin() {
+    // 여기서는 단순히 비밀번호 저장만
+    if (password.length > 0) setLoggedIn(true);
+  }
+
+  async function sendMessage() {
+    if (!message.trim()) return;
+    const payload = {
+      password,
+      message,
+      temperature,
+      max_tokens: maxTokens,
+    };
+    const res = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
-
-    async function sendMessage() {
-      const input = document.getElementById('userInput');
-      const model = document.getElementById('model').value;
-      const password = document.getElementById('password').value;
-      const message = input.value.trim();
-      if (!message) return;
-
-      const chatbox = document.getElementById('chatbox');
-      chatbox.innerHTML += `<div><b>👤 나:</b> ${message}</div>`;
-      input.value = '';
-
-      const res = await fetch('/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, history, password, model })
-      });
-
-      if (res.status === 403) {
-        alert("❌ 비밀번호가 틀렸습니다");
-        return;
-      }
-
-      const data = await res.json();
-      history = data.history;
-      chatbox.innerHTML += `<div><b>🤖 GPT:</b> ${data.reply}</div>`;
-      chatbox.scrollTop = chatbox.scrollHeight;
+    const data = await res.json();
+    if (res.ok) {
+      setChatLog([...chatLog, { user: message, bot: data.response }]);
+      setMessage("");
+    } else {
+      alert(data.error || "Error occurred");
     }
+  }
 
-    function saveChat() {
-      const blob = new Blob([JSON.stringify(history, null, 2)], { type: 'application/json' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'chat_history.json';
-      link.click();
-    }
-  </script>
-</body>
-</html>
+  if (!loggedIn) {
+    return (
+      <div>
+        <h2>로그인</h2>
+        <input
+          type="password"
+          placeholder="비밀번호 입력"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button onClick={handleLogin}>로그인</button>
+      </div>
+    );
+  }
 
+  return (
+    <div>
+      <h2>챗봇</h2>
+      <div>
+        <label>
+          온도 (temperature):
+          <input
+            type="number"
+            step="0.1"
+            min="0"
+            max="1"
+            value={temperature}
+            onChange={(e) => setTemperature(parseFloat(e.target.value))}
+          />
+        </label>
+        <label>
+          최대 토큰 (max_tokens):
+          <input
+            type="number"
+            min="1"
+            max="4096"
+            value={maxTokens}
+            onChange={(e) => setMaxTokens(parseInt(e.target.value))}
+          />
+        </label>
+      </div>
+      <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #ccc" }}>
+        {chatLog.map(({ user, bot }, i) => (
+          <div key={i}>
+            <b>나:</b> {user} <br />
+            <b>챗봇:</b> {bot}
+            <hr />
+          </div>
+        ))}
+      </div>
+      <input
+        type="text"
+        placeholder="메시지 입력"
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") sendMessage();
+        }}
+      />
+      <button onClick={sendMessage}>전송</button>
+    </div>
+  );
+}
