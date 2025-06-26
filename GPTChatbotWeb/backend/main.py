@@ -75,4 +75,3 @@ async def admin_log(session_id: str):
     if session_id not in sessions or not sessions[session_id]["is_admin"]:
         raise HTTPException(status_code=403, detail="관리자 권한 없음")
     return {"all_sessions": sessions}
-```
