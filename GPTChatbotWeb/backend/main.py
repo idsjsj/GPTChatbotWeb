@@ -1,46 +1,40 @@
-# ✅ backend/main.py - All-in-One GPT Chatbot Backend (with password, history, model choice)
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-import openai, os
+import os
+from flask import Flask, request, jsonify
+from dotenv import load_dotenv
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+load_dotenv()
 
-app = FastAPI()
+app = Flask(__name__)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# 환경변수에서 비밀번호 불러오기, 기본값 12345678
+CHATBOT_PASSWORD = os.getenv("CHATBOT_PASSWORD", "12345678")
 
-# Static frontend
-app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
+# GPT 옵션 기본값
+DEFAULT_TEMPERATURE = 0.7
+DEFAULT_MAX_TOKENS = 1024
 
-# Config
-PASSWORD = "12345678"
+def preprocess_pdf_text(text: str) -> str:
+    # PDF 텍스트 전처리 - 불필요한 공백 제거
+    return text.strip()
 
-@app.post("/chat")
-async def chat(request: Request):
-    data = await request.json()
-    if data.get("password") != PASSWORD:
-        raise HTTPException(status_code=403, detail="Incorrect password")
+@app.route('/chat', methods=['POST'])
+def chat():
+    data = request.json
+    password = data.get('password')
+    user_input = data.get('message')
+    temperature = data.get('temperature', DEFAULT_TEMPERATURE)
+    max_tokens = data.get('max_tokens', DEFAULT_MAX_TOKENS)
 
-    message = data.get("message", "")
-    history = data.get("history", [])
-    model = data.get("model", "gpt-4")
+    # 비밀번호 확인
+    if password != CHATBOT_PASSWORD:
+        return jsonify({"error": "Invalid password"}), 401
 
-    messages = history + [{"role": "user", "content": message}]
+    # GPT 호출 예시 (여기선 예시로 간단히 반환)
+    # 실제로는 OpenAI API 호출 코드 삽입
+    response_text = f"Received your message: {user_input}\nOptions - temp: {temperature}, max_tokens: {max_tokens}"
 
-    try:
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=messages
-        )
-        reply = response.choices[0].message.content
-        messages.append({"role": "assistant", "content": reply})
-        return {"reply": reply, "history": messages}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return jsonify({"response": response_text})
+
+if __name__ == '__main__':
+    app.run(debug=True)
  
