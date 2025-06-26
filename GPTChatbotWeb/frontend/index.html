@@ -1,100 +1,108 @@
-import React, { useState } from "react";
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>GPT Chatbot (Secure)</title>
+  <style>
+    body { font-family: sans-serif; padding: 2em; background: #f0f0f0; }
+    #chatbox { background: white; border: 1px solid #ccc; padding: 1em; height: 400px; overflow-y: scroll; }
+    input, select, button, textarea { margin-top: 0.5em; padding: 0.5em; width: 100%; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <h2>🔐 GPT 챗봇 (비밀번호 필요)</h2>
+  <input id="password" type="password" placeholder="비밀번호 입력 후 Enter" />
+  <div id="chatUI" style="display:none;">
+    <div id="chatbox"></div>
+    <input id="userInput" placeholder="메시지를 입력하세요..." />
+    <select id="model">
+      <option value="gpt-4">GPT-4</option>
+      <option value="gpt-3.5-turbo">GPT-3.5</option>
+    </select>
+    <input type="file" id="fileUpload" accept=".pdf,.txt" />
+    <button onclick="sendMessage()">보내기</button>
+    <button onclick="saveChat()">💾 저장</button>
+    <button onclick="recordVoice()">🎤 음성 입력</button>
+    <textarea id="uploadPreview" rows="4" readonly placeholder="업로드된 요약 내용"></textarea>
+  </div>
 
-export default function Chatbot() {
-  const [password, setPassword] = useState("");
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [message, setMessage] = useState("");
-  const [chatLog, setChatLog] = useState([]);
-  const [temperature, setTemperature] = useState(0.7);
-  const [maxTokens, setMaxTokens] = useState(1024);
+  <script>
+    let history = JSON.parse(localStorage.getItem('chatHistory') || "[]");
+    let password = "";
+    const chatbox = document.getElementById('chatbox');
 
-  async function handleLogin() {
-    // 여기서는 단순히 비밀번호 저장만
-    if (password.length > 0) setLoggedIn(true);
-  }
-
-  async function sendMessage() {
-    if (!message.trim()) return;
-    const payload = {
-      password,
-      message,
-      temperature,
-      max_tokens: maxTokens,
-    };
-    const res = await fetch("/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    // 로그인
+    document.getElementById("password").addEventListener("keydown", function(e) {
+      if (e.key === "Enter") {
+        password = this.value;
+        document.getElementById("chatUI").style.display = "block";
+        this.style.display = "none";
+        if (history.length > 0) {
+          history.forEach(msg => {
+            const role = msg.role === "user" ? "👤 나" : "🤖 GPT";
+            chatbox.innerHTML += `<div><b>${role}:</b> ${msg.content}</div>`;
+          });
+        }
+      }
     });
-    const data = await res.json();
-    if (res.ok) {
-      setChatLog([...chatLog, { user: message, bot: data.response }]);
-      setMessage("");
-    } else {
-      alert(data.error || "Error occurred");
+
+    async function sendMessage() {
+      const input = document.getElementById('userInput');
+      const model = document.getElementById('model').value;
+      const message = input.value.trim();
+      if (!message) return;
+
+      chatbox.innerHTML += `<div><b>👤 나:</b> ${message}</div>`;
+      input.value = '';
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, history, password, model })
+      });
+
+      if (res.status === 403) {
+        alert("❌ 비밀번호가 틀렸습니다.");
+        return;
+      }
+
+      const data = await res.json();
+      history = data.history;
+      localStorage.setItem('chatHistory', JSON.stringify(history));
+      chatbox.innerHTML += `<div><b>🤖 GPT:</b> ${data.reply}</div>`;
+      chatbox.scrollTop = chatbox.scrollHeight;
     }
-  }
 
-  if (!loggedIn) {
-    return (
-      <div>
-        <h2>로그인</h2>
-        <input
-          type="password"
-          placeholder="비밀번호 입력"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button onClick={handleLogin}>로그인</button>
-      </div>
-    );
-  }
+    function saveChat() {
+      const blob = new Blob([JSON.stringify(history, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'chat_history.json';
+      link.click();
+    }
 
-  return (
-    <div>
-      <h2>챗봇</h2>
-      <div>
-        <label>
-          온도 (temperature):
-          <input
-            type="number"
-            step="0.1"
-            min="0"
-            max="1"
-            value={temperature}
-            onChange={(e) => setTemperature(parseFloat(e.target.value))}
-          />
-        </label>
-        <label>
-          최대 토큰 (max_tokens):
-          <input
-            type="number"
-            min="1"
-            max="4096"
-            value={maxTokens}
-            onChange={(e) => setMaxTokens(parseInt(e.target.value))}
-          />
-        </label>
-      </div>
-      <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #ccc" }}>
-        {chatLog.map(({ user, bot }, i) => (
-          <div key={i}>
-            <b>나:</b> {user} <br />
-            <b>챗봇:</b> {bot}
-            <hr />
-          </div>
-        ))}
-      </div>
-      <input
-        type="text"
-        placeholder="메시지 입력"
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") sendMessage();
-        }}
-      />
-      <button onClick={sendMessage}>전송</button>
-    </div>
-  );
-}
+    async function recordVoice() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      let chunks = [];
+
+      rec.ondataavailable = e => chunks.push(e.data);
+      rec.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/wav' });
+        alert("🎤 음성 인식 기능은 아직 서버에 연결되어 있지 않아요!");
+      };
+
+      rec.start();
+      setTimeout(() => rec.stop(), 3000); // 3초만 녹음
+    }
+
+    document.getElementById("fileUpload").addEventListener("change", async function() {
+      const file = this.files[0];
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/upload", { method: "POST", body: form });
+      const data = await res.json();
+      document.getElementById("uploadPreview").value = data.content;
+    });
+  </script>
+</body>
+</html>
