@@ -1,31 +1,23 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>GPT 챗봇 (파일·음성·이미지 입력)</title>
+  <title>GPT 챗봇</title>
   <style>
-    body { font-family: Arial; padding: 2em; background: #f5f5f5; }
-    #login, #chat { max-width: 700px; margin: auto; background: white; padding: 2em; border-radius: 10px; }
-    #chat { display: none; }
+    body { font-family: Arial; padding: 2em; background: #f5f5f5; color: #000; }
+    #chat { max-width: 700px; margin: auto; background: #fff; padding: 2em; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
     #chatbox { height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 1em; margin-bottom: 1em; background: #fefefe; }
-    input, select, button, textarea { width: 100%; padding: 0.7em; margin-top: 0.5em; }
-    .msg { margin: 0.5em 0; }
-    .user { font-weight: bold; color: #007bff; }
-    .bot { font-weight: bold; color: #28a745; }
+    input, select, button, textarea { width: 100%; padding: 0.7em; margin-top: 0.5em; border: 1px solid #ccc; border-radius: 4px; }
+    button { background-color: #007bff; color: #fff; font-weight: bold; cursor: pointer; }
+    .msg { margin: 0.5em 0; white-space: pre-wrap; }
+    .user { color: #007bff; font-weight: bold; }
+    .bot { color: #28a745; font-weight: bold; }
   </style>
 </head>
 <body>
 
-<div id="login">
-  <h2>🔐 GPT 챗봇 로그인</h2>
-  <input id="username" placeholder="사용자 이름" />
-  <input id="password" type="password" placeholder="비밀번호 (기본: 12345678)" />
-  <button onclick="login()">로그인</button>
-  <p id="loginStatus" style="color:red;"></p>
-</div>
-
 <div id="chat">
-  <h3>👤 <span id="displayName"></span>님, 환영합니다!</h3>
+  <h2>🤖 GPT 챗봇</h2>
   <div id="chatbox"></div>
   <input id="message" placeholder="메시지를 입력하세요..." />
   <select id="model">
@@ -35,47 +27,25 @@
   <button onclick="sendMessage()">보내기</button>
   <button onclick="regenerate()">↺ 다시 생성</button>
   <button onclick="save()">💾 저장</button>
+
   <hr />
   <h4>📁 파일 업로드 (PDF / TXT)</h4>
   <input type="file" id="fileUpload" accept=".pdf,.txt" />
-  <textarea id="uploadResult" rows="4" readonly placeholder="요약 결과가 여기에 표시됩니다."></textarea>
-  <hr />
-  <h4>🖼️ 이미지 업로드 (설명)</h4>
+  <textarea id="uploadResult" rows="4" readonly></textarea>
+
+  <h4>🖼️ 이미지 업로드</h4>
   <input type="file" id="imageUpload" accept="image/*" />
-  <textarea id="imageResult" rows="4" readonly placeholder="이미지 설명 결과가 여기에 표시됩니다."></textarea>
-  <hr />
+  <textarea id="imageResult" rows="4" readonly></textarea>
+
   <h4>🎤 음성 질문</h4>
   <input type="file" id="voiceUpload" accept="audio/*" />
-  <textarea id="voiceResult" rows="2" readonly placeholder="음성 인식 결과가 여기에 표시됩니다."></textarea>
+  <textarea id="voiceResult" rows="2" readonly></textarea>
 </div>
 
 <script>
-let session_id = "";
+let session_id = localStorage.getItem("session_id") || crypto.randomUUID();
+localStorage.setItem("session_id", session_id);
 let history = [];
-
-function login() {
-  const username = document.getElementById("username").value.trim();
-  const password = document.getElementById("password").value.trim();
-
-  fetch('/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
-  })
-  .then(res => {
-    if (!res.ok) throw new Error("Login failed");
-    return res.json();
-  })
-  .then(data => {
-    session_id = data.session_id;
-    document.getElementById("login").style.display = "none";
-    document.getElementById("chat").style.display = "block";
-    document.getElementById("displayName").innerText = username;
-  })
-  .catch(() => {
-    document.getElementById("loginStatus").innerText = "❌ 로그인 실패 (비밀번호 확인)";
-  });
-}
 
 function appendMessage(role, content) {
   const div = document.createElement("div");
@@ -126,40 +96,34 @@ function save() {
   a.click();
 }
 
-// 📁 파일 업로드
 document.getElementById("fileUpload").addEventListener("change", function () {
   const file = this.files[0];
+  if (!file) return;
   const form = new FormData();
   form.append("file", file);
   fetch("/upload", { method: "POST", body: form })
     .then(res => res.json())
-    .then(data => {
-      document.getElementById("uploadResult").value = data.content;
-    });
+    .then(data => document.getElementById("uploadResult").value = data.content);
 });
 
-// 🖼️ 이미지 업로드
 document.getElementById("imageUpload").addEventListener("change", function () {
   const file = this.files[0];
+  if (!file) return;
   const form = new FormData();
   form.append("file", file);
   fetch("/image", { method: "POST", body: form })
     .then(res => res.json())
-    .then(data => {
-      document.getElementById("imageResult").value = data.description;
-    });
+    .then(data => document.getElementById("imageResult").value = data.description);
 });
 
-// 🎤 음성 업로드
 document.getElementById("voiceUpload").addEventListener("change", function () {
   const file = this.files[0];
+  if (!file) return;
   const form = new FormData();
   form.append("file", file);
   fetch("/voice", { method: "POST", body: form })
     .then(res => res.json())
-    .then(data => {
-      document.getElementById("voiceResult").value = data.text;
-    });
+    .then(data => document.getElementById("voiceResult").value = data.text);
 });
 </script>
 
