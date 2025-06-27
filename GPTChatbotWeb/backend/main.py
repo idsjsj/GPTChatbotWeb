@@ -16,11 +16,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 프론트엔드 정적 파일 제공
+# 프론트엔드 정적 파일 경로
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
 
 # 세션 저장소
-sessions = {}  # session_id: {"history": [...]}
+sessions = {}
 
 @app.post("/chat")
 async def chat(req: Request):
