@@ -1,17 +1,14 @@
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import openai, os, uuid
+import openai, os, uuid, base64
 import PyPDF2
-from PIL import Image
-import base64
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
-PASSWORD = os.getenv("CHATBOT_PASSWORD", "12345678")
 
 app = FastAPI()
 
-# CORS 설정
+# CORS 허용
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,39 +16,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 정적 프론트엔드 파일 제공
+# 프론트엔드 정적 파일 제공
 app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
 
-# 세션 저장소 (메모리 기반)
-sessions = {}
-
-@app.post("/login")
-async def login(req: Request):
-    data = await req.json()
-    if data.get("password") != PASSWORD:
-        raise HTTPException(status_code=403, detail="비밀번호가 틀렸습니다.")
-    username = data.get("username", "anonymous")
-    session_id = str(uuid.uuid4())
-    sessions[session_id] = {"name": username, "history": []}
-    return {"session_id": session_id}
+# 세션 저장소
+sessions = {}  # session_id: {"history": [...]}
 
 @app.post("/chat")
 async def chat(req: Request):
     data = await req.json()
-    session_id = data.get("session_id")
+    session_id = data.get("session_id") or str(uuid.uuid4())
     message = data.get("message")
     model = data.get("model", "gpt-4")
     temperature = float(data.get("temperature", 0.7))
     max_tokens = int(data.get("max_tokens", 1024))
 
     if session_id not in sessions:
-        raise HTTPException(status_code=400, detail="세션이 존재하지 않습니다.")
+        sessions[session_id] = {"history": []}
 
     session = sessions[session_id]
+    history = session["history"]
+
     if message == "[REPEAT_LAST]":
-        history = session["history"][:-1] if session["history"] else []
+        history = history[:-1] if history else []
     else:
-        history = session["history"] + [{"role": "user", "content": message}]
+        history.append({"role": "user", "content": message})
 
     try:
         response = openai.ChatCompletion.create(
@@ -63,7 +52,7 @@ async def chat(req: Request):
         reply = response.choices[0].message.content
         history.append({"role": "assistant", "content": reply})
         session["history"] = history
-        return {"reply": reply, "history": history}
+        return {"reply": reply, "history": history, "session_id": session_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -89,7 +78,7 @@ async def upload(file: UploadFile = File(...)):
     else:
         raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다.")
 
-    return {"content": content[:3000]}  # 최대 3000자 미리보기
+    return {"content": content[:3000]}
 
 @app.post("/voice")
 async def voice_to_text(file: UploadFile = File(...)):
