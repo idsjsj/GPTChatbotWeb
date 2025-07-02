@@ -2,97 +2,62 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GPT Chat - ChatGPT 스타일</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <title>GPT Chatbot</title>
   <style>
-    body.dark-mode { background: #121212; color: #eee; }
-    .chatbox { height: 500px; overflow-y: auto; background: #f9f9f9; padding: 1em; border-radius: 0.75em; }
-    .chatbox.dark { background: #222; }
-    .bubble { display: inline-block; padding: 0.6em 1em; border-radius: 1em; max-width: 75%; }
-    .msg-user { text-align: right; }
-    .bubble.user { background: #0d6efd; color: #fff; }
-    .msg-bot { text-align: left; }
-    .bubble.bot { background: #e0e0e0; color: #000; }
-    .dark-mode .bubble.bot { background: #444; color: #eee; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 20px;
+    }
+    #chatbox {
+      max-width: 600px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    #response {
+      margin-top: 20px;
+      padding: 10px;
+      background: #e8f0fe;
+      border-radius: 5px;
+    }
+    input, button {
+      padding: 10px;
+      font-size: 16px;
+      margin-top: 10px;
+      width: 100%;
+    }
   </style>
 </head>
-<body class="bg-light">
-
-<div class="container mt-4">
-  <div class="d-flex justify-content-between">
-    <h2>🧠 GPT Chat</h2>
-    <button class="btn btn-sm btn-outline-secondary" onclick="toggleDark()">🌙</button>
+<body>
+  <div id="chatbox">
+    <h2>GPT Chatbot</h2>
+    <form id="chatForm">
+      <input type="text" id="prompt" name="prompt" placeholder="메시지를 입력하세요..." required />
+      <button type="submit">전송</button>
+    </form>
+    <div id="response"></div>
   </div>
 
-  <div id="chatbox" class="chatbox mt-3"></div>
+  <script>
+    const form = document.getElementById("chatForm");
+    const responseDiv = document.getElementById("response");
 
-  <div class="input-group mt-3">
-    <input id="message" class="form-control" placeholder="메시지를 입력하세요..." />
-    <button class="btn btn-primary" onclick="sendMessage()">보내기</button>
-    <button class="btn btn-outline-secondary" onclick="regenerate()">↺</button>
-    <button class="btn btn-outline-success" onclick="save()">💾</button>
-  </div>
-</div>
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const formData = new FormData(form);
 
-<script>
-let session_id = localStorage.getItem("session_id") || crypto.randomUUID();
-localStorage.setItem("session_id", session_id);
-let history = [];
+      const res = await fetch("http://localhost:10000/chat", {
+        method: "POST",
+        body: formData
+      });
 
-function append(role, text) {
-  const div = document.createElement("div");
-  div.className = role === "user" ? "msg-user my-2" : "msg-bot my-2";
-  const bubble = document.createElement("div");
-  bubble.className = "bubble " + (role === "user" ? "user" : "bot");
-  bubble.innerText = text;
-  div.appendChild(bubble);
-  document.getElementById("chatbox").appendChild(div);
-  document.getElementById("chatbox").scrollTop = 99999;
-}
-
-function sendMessage() {
-  const msg = document.getElementById("message").value.trim();
-  if (!msg) return;
-  append("user", msg);
-  document.getElementById("message").value = "";
-  fetch('/chat', {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id, message: msg, model: "gpt-4" })
-  })
-  .then(res => res.json())
-  .then(data => {
-    history = data.history;
-    append("assistant", data.reply);
-  });
-}
-
-function regenerate() {
-  fetch('/chat', {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id, message: "[REPEAT_LAST]", model: "gpt-4" })
-  })
-  .then(res => res.json())
-  .then(data => {
-    history = data.history;
-    append("assistant", data.reply + " (재생성)");
-  });
-}
-
-function save() {
-  const blob = new Blob([JSON.stringify(history, null, 2)], {type: "application/json"});
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "chat_history.json";
-  a.click();
-}
-
-function toggleDark() {
-  document.body.classList.toggle("dark-mode");
-  document.getElementById("chatbox").classList.toggle("dark");
-}
-</script>
+      const data = await res.json();
+      responseDiv.textContent = data.answer || data.error || "응답 없음";
+    });
+  </script>
 </body>
 </html>
