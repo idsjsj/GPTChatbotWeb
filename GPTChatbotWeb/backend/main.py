@@ -1,10 +1,17 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import openai, os, uuid
+import os
+import openai
+from dotenv import load_dotenv
+
+load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
+
 app = FastAPI()
 
+# CORS 설정 (필요하면 도메인 수정)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -12,35 +19,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-sessions = {}
+@app.get("/")
+async def root():
+    return {"message": "Hello from FastAPI backend"}
 
 @app.post("/chat")
-async def chat(req: Request):
-    data = await req.json()
-    session_id = data.get("session_id") or str(uuid.uuid4())
-    message = data.get("message")
-    model = data.get("model", "gpt-4")
-
-    if session_id not in sessions:
-        sessions[session_id] = []
-
-    history = sessions[session_id]
-
-    if message == "[REPEAT_LAST]":
-        history = history[:-1]
-
-    else:
-        history.append({"role": "user", "content": message})
-
+async def chat_endpoint(prompt: str = Form(...)):
     try:
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=history,
+        completion = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=1024
+            max_tokens=1024,
         )
-        reply = response.choices[0].message.content
-        history.append({"role": "assistant", "content": reply})
-        return {"reply": reply, "history": history, "session_id": session_id}
+        answer = completion.choices[0].message.content
+        return JSONResponse(content={"answer": answer})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
